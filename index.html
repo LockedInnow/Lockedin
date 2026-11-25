@@ -61,7 +61,8 @@ const $=id=>document.getElementById(id);
 let cards=[],queue=[],flip=false,mode=1,qi=0,score=0,sample=null;
 const W="Du är en peppig studiecoach för svenska elever. ";
 
-claude.use("sample").then(s=>{sample=s;if(!s)$("msg").textContent="AI är inte tillgänglig här just nu."}).catch(()=>{});
+sample=async p=>{const r=await fetch("/.netlify/functions/ai",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({prompt:p})});if(!r.ok)throw new Error("AI-fel");return await r.json()};
+sample.limits=async()=>({images:false});
 
 function load(){try{return JSON.parse(localStorage.getItem("decks")||"[]")}catch(e){return[]}}
 function store(d){try{localStorage.setItem("decks",JSON.stringify(d))}catch(e){}}
