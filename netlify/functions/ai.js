@@ -1,15 +1,26 @@
+const SB = "https://pclhlbvuepsseuvsbaxg.supabase.co";
+const KEY = "sb_publishable_2bVOQdcM0Jeuc5STzR4sbw_q-5ox2ZY";
 const hits = new Map();
-const LIMIT = 30;
 const WINDOW = 3600000;
 
-function limited(ip) {
+function limited(key, max) {
   const now = Date.now();
-  const a = (hits.get(ip) || []).filter(t => now - t < WINDOW);
-  if (a.length >= LIMIT) { hits.set(ip, a); return true; }
+  const a = (hits.get(key) || []).filter(t => now - t < WINDOW);
+  if (a.length >= max) { hits.set(key, a); return true; }
   a.push(now);
-  hits.set(ip, a);
+  hits.set(key, a);
   if (hits.size > 5000) hits.clear();
   return false;
+}
+
+async function getUserId(auth) {
+  if (!auth || !auth.startsWith("Bearer ")) return null;
+  try {
+    const r = await fetch(SB + "/auth/v1/user", { headers: { apikey: KEY, Authorization: auth } });
+    if (!r.ok) return null;
+    const u = await r.json();
+    return u.id || null;
+  } catch { return null; }
 }
 
 exports.handler = async (event) => {
@@ -18,8 +29,13 @@ exports.handler = async (event) => {
   if (event.httpMethod !== "POST") return { statusCode: 405, body: "Method not allowed" };
 
   const h = event.headers || {};
+  const uid = await getUserId(h.authorization || h.Authorization);
+  if (!uid) return fail(401, "Logga in för att använda AI:n.");
+
   const ip = h["x-nf-client-connection-ip"] || (h["x-forwarded-for"] || "").split(",")[0] || "okänd";
-  if (limited(ip)) return fail(429, "För många förfrågningar. Vänta en stund och försök igen.");
+  if (limited("u:" + uid, 30) || limited("ip:" + ip, 90)) {
+    return fail(429, "För många förfrågningar. Vänta en stund och försök igen.");
+  }
 
   let prompt, image;
   try { ({ prompt, image } = JSON.parse(event.body)); }
