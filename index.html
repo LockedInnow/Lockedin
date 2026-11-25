@@ -36,7 +36,7 @@ input{padding:9px;border-radius:10px;border:1px solid var(--bd);background:var(-
 <body>
 <main>
 <h1>📚 PluggAI</h1>
-<p class="sub">Klistra in dina anteckningar eller frågor – AI:n gör dem till flashcards, quiz och minnestricks.</p>
+<p class="sub">Klistra in dina anteckningar eller frågor – AI:n gör dem till flashcards, quiz och minnestricks. [v3]</p>
 
 <div class="box">
 <div id="hud" class="mu" style="margin-bottom:8px"></div><textarea id="src" placeholder="Klistra in text, glosor eller frågor här…"></textarea>
@@ -61,7 +61,7 @@ const $=id=>document.getElementById(id);
 let cards=[],queue=[],flip=false,mode=1,qi=0,score=0,sample=null;
 const W="Du är en peppig studiecoach för svenska elever. ";
 
-sample=async p=>{const r=await fetch("/.netlify/functions/ai",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({prompt:p})});if(!r.ok)throw new Error("AI-fel");return await r.json()};
+sample=async p=>{const r=await fetch("/.netlify/functions/ai",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({prompt:p})});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(r.status+": "+(j.error||"okänt fel"));return j};
 sample.limits=async()=>({images:false});
 
 function load(){try{return JSON.parse(localStorage.getItem("decks")||"[]")}catch(e){return[]}}
@@ -81,9 +81,9 @@ $("go").onclick=async()=>{
     const out=await ask(W+`Skapa ${$("n").value} flashcards på svenska från texten nedan. Nivå: ${$("lvl").value}. Korta, tydliga frågor och svar. Om texten redan är frågor, svara på dem. Svara ENDAST med en JSON-array [{"q":"fråga","a":"svar"}], inga backticks.\n\nTEXT:\n${t}`);
     const j=JSON.parse(out.slice(out.indexOf("["),out.lastIndexOf("]")+1));
     cards=j.filter(c=>c.q&&c.a);
-    if(!cards.length)throw 0;
+    if(!cards.length)throw new Error("Tomt svar: "+out.slice(0,150));
     start();$("msg").textContent="Klart! "+cards.length+" kort.";
-  }catch(e){$("msg").className="err";$("msg").textContent="Något gick snett – försök igen."}
+  }catch(e){$("msg").className="err";$("msg").textContent="Något gick snett – "+((e&&e.message)||"försök igen")}
   $("go").disabled=false;
 };
 
