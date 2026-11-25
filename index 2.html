@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PluggAI – gör anteckningar till flashcards</title>
+<style>
+:root{--bg:#f6f5ff;--card:#fff;--tx:#1d1b2e;--mu:#6b6885;--ac:#6c4cf5;--ac2:#e9e4ff;--ok:#1f9d63;--no:#d6403f;--bd:#dcd8f2;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15131f;--card:#201d2f;--tx:#efedfb;--mu:#a29fbd;--ac:#9a82ff;--ac2:#2c2750;--ok:#4cc48a;--no:#ff7371;--bd:#3a3557}}
+:root[data-theme="dark"]{--bg:#15131f;--card:#201d2f;--tx:#efedfb;--mu:#a29fbd;--ac:#9a82ff;--ac2:#2c2750;--ok:#4cc48a;--no:#ff7371;--bd:#3a3557}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:720px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:1.7rem;margin:0}.sub{color:var(--mu);margin:4px 0 18px}
+.box{background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:16px;margin-bottom:16px}
+textarea{width:100%;min-height:150px;border:1px solid var(--bd);border-radius:12px;padding:12px;background:var(--bg);color:var(--tx);font:inherit;resize:vertical}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+select{padding:9px;border-radius:10px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);font:inherit}
+button{font:inherit;cursor:pointer;border:0;border-radius:12px;padding:10px 16px;background:var(--ac);color:#fff;font-weight:600}
+button.g{background:var(--ac2);color:var(--tx)}button.ok{background:var(--ok)}button.no{background:var(--no)}
+button:disabled{opacity:.5;cursor:default}
+.tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.tabs button{background:var(--ac2);color:var(--tx)}.tabs button.on{background:var(--ac);color:#fff}
+.fc{min-height:210px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:1.25rem;padding:24px;border-radius:18px;background:var(--card);border:2px solid var(--ac);cursor:pointer;user-select:none}
+.fc small{display:block;color:var(--mu);font-size:.8rem;margin-bottom:8px}
+.bar{height:8px;background:var(--ac2);border-radius:99px;overflow:hidden;margin:10px 0}.bar i{display:block;height:100%;background:var(--ac);transition:width .3s}
+.opt{display:block;width:100%;text-align:left;margin:6px 0;background:var(--card);color:var(--tx);border:2px solid var(--bd)}
+.opt.r{border-color:var(--ok)}.opt.w{border-color:var(--no)}
+.ai{margin-top:10px;padding:12px;border-radius:12px;background:var(--ac2);white-space:pre-wrap}
+.mu{color:var(--mu);font-size:.9rem}.err{color:var(--no)}
+.deck{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--bd)}
+input{padding:9px;border-radius:10px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);font:inherit}
+</style>
+</head>
+<body>
+<main>
+<h1>📚 PluggAI</h1>
+<p class="sub">Klistra in dina anteckningar eller frågor – AI:n gör dem till flashcards, quiz och minnestricks.</p>
+
+<div class="box">
+<div id="hud" class="mu" style="margin-bottom:8px"></div><textarea id="src" placeholder="Klistra in text, glosor eller frågor här…"></textarea>
+<div class="row">
+<select id="lvl"><option>Grundskola</option><option selected>Gymnasiet</option></select>
+<select id="n"><option>8</option><option selected>12</option><option>20</option></select>
+<button id="go">✨ Skapa flashcards</button><button class="g" id="phb">📷 Från foto</button><input type="file" id="ph" accept="image/*" hidden>
+</div>
+<div id="msg" class="mu"></div>
+</div>
+
+<div id="study" class="box" hidden>
+<div class="tabs"><button id="t1" class="on">🃏 Flashcards</button><button id="t2">❓ Quiz</button><button id="t4">✍️ Skriv</button><button id="t5">⏱ Prov</button><button id="t3">💾 Spara & dela</button></div>
+<div id="view"></div>
+</div>
+
+<div class="box"><b>📅 Studieplan</b><div class="row"><input type="date" id="dt"><input type="number" id="nc" placeholder="Antal kort" style="width:110px"><button id="pl">Räkna ut</button></div><div id="po" class="mu" style="margin-top:8px"></div></div>
+<div class="box"><b>Sparade kortlekar</b><div id="decks" class="mu">Inga sparade än.</div></div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let cards=[],queue=[],flip=false,mode=1,qi=0,score=0,sample=null;
+const W="Du är en peppig studiecoach för svenska elever. ";
+
+sample=async p=>{const r=await fetch("/.netlify/functions/ai",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({prompt:p})});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(r.status+": "+(j.error||"okänt fel"));return j};
+sample.limits=async()=>({images:false});
+
+function load(){try{return JSON.parse(localStorage.getItem("decks")||"[]")}catch(e){return[]}}
+function store(d){try{localStorage.setItem("decks",JSON.stringify(d))}catch(e){}}
+function esc(s){const d=document.createElement("div");d.textContent=s;return d.innerHTML}
+
+async function ask(p){
+  const r=await sample(p,{cache:false});return r.text;
+}
+
+$("go").onclick=async()=>{
+  const t=$("src").value.trim();
+  if(!t){$("msg").textContent="Klistra in något först!";return}
+  if(!sample){$("msg").textContent="AI är inte tillgänglig.";return}
+  $("go").disabled=true;$("msg").className="mu";$("msg").textContent="Skapar kort…";
+  try{
+    const out=await ask(W+`Skapa ${$("n").value} flashcards på svenska från texten nedan. Nivå: ${$("lvl").value}. Korta, tydliga frågor och svar. Om texten redan är frågor, svara på dem. Svara ENDAST med en JSON-array [{"q":"fråga","a":"svar"}], inga backticks.\n\nTEXT:\n${t}`);
+    const j=JSON.parse(out.slice(out.indexOf("["),out.lastIndexOf("]")+1));
+    cards=j.filter(c=>c.q&&c.a);
+    if(!cards.length)throw 0;
+    start();$("msg").textContent="Klart! "+cards.length+" kort.";
+  }catch(e){$("msg").className="err";$("msg").textContent="Något gick snett – "+((e&&e.message)||"försök igen")}
+  $("go").disabled=false;
+};
+
+function start(){queue=[...cards];flip=false;qi=0;score=0;$("study").hidden=false;show(1)}
+function show(m){mode=m;[1,2,3].forEach(i=>$("t"+i).className=i==m?"on":"");m==1?fc():m==2?quiz():save()}
+$("t1").onclick=()=>show(1);$("t2").onclick=()=>{qi=0;score=0;show(2)};$("t3").onclick=()=>show(3);
+
+function fc(){
+  const v=$("view");
+  if(!queue.length){v.innerHTML=`<div class="fc" style="cursor:default">🎉 Du kan alla kort!</div><div class="row"><button id="again">Börja om</button></div>`;$("again").onclick=start;return}
+  const c=queue[0],done=cards.length-queue.length;
+  v.innerHTML=`<div class="mu">${done}/${cards.length} klara</div><div class="bar"><i style="width:${done/cards.length*100}%"></i></div>
+  <div class="fc" id="card"><div><small>${flip?"SVAR":"FRÅGA – tryck för att vända"}</small>${esc(flip?c.a:c.q)}</div></div>
+  <div class="row"><button class="no" id="bad">Kan inte än</button><button class="ok" id="good">Kan!</button>
+  <button class="g" id="mn">🧠 Minnestrick</button><button class="g" id="ez">👶 Förklara enklare</button></div><div id="ai"></div>`;
+  $("card").onclick=()=>{flip=!flip;fc()};
+  $("good").onclick=()=>{queue.shift();flip=false;xp(5);fc()};
+  $("bad").onclick=()=>{queue.push(queue.shift());flip=false;fc()};
+  const help=(id,p)=>$(id).onclick=async()=>{
+    $("ai").innerHTML='<div class="ai">Tänker…</div>';
+    try{$("ai").innerHTML='<div class="ai">'+esc(await ask(W+p+`\nFråga: ${c.q}\nSvar: ${c.a}`))+'</div>'}catch(e){$("ai").innerHTML='<div class="ai err">Det gick inte, försök igen.</div>'}
+  };
+  help("mn","Hitta ett kreativt, kul minnestrick (ramsa, akronym eller bild) för att komma ihåg svaret. Max 3 meningar.");
+  help("ez","Förklara svaret superenkelt med en vardaglig liknelse, som för en 12-åring. Max 4 meningar.");
+}
+
+function quiz(){
+  const v=$("view");
+  if(cards.length<2){v.innerHTML="Du behöver minst 2 kort för quiz.";return}
+  if(qi>=cards.length){exam=0;v.innerHTML=`<div class="fc" style="cursor:default">Resultat: ${score}/${cards.length} 🏆</div><div class="row"><button id="rq">Kör igen</button></div>`;$("rq").onclick=()=>{qi=0;score=0;quiz()};return}
+  const c=cards[qi];
+  const wr=cards.filter(x=>x!==c).map(x=>x.a).sort(()=>Math.random()-.5).slice(0,3);
+  const opts=[c.a,...wr].sort(()=>Math.random()-.5);
+  v.innerHTML=`${exam?'<div class="mu" id="tm"></div>':''}<div class="mu">Fråga ${qi+1}/${cards.length}</div><h3>${esc(c.q)}</h3>`+opts.map((o,i)=>`<button class="opt" data-i="${i}">${esc(o)}</button>`).join("")+`<div id="nx"></div>`;
+  v.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{
+    const ok=opts[b.dataset.i]===c.a;if(ok){score++;xp(10)}
+    v.querySelectorAll(".opt").forEach(x=>{x.disabled=true;if(opts[x.dataset.i]===c.a)x.classList.add("r")});
+    if(!ok)b.classList.add("w");
+    $("nx").innerHTML='<div class="row"><button id="nb">Nästa →</button></div>';$("nb").onclick=()=>{qi++;quiz()};
+  });
+}
+
+function save(){
+  $("view").innerHTML=`<div class="row"><input id="nm" placeholder="Namn på kortleken" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);font:inherit"><button id="sv">Spara</button></div>`;
+  $("sv").onclick=()=>{const d=load();d.push({name:$("nm").value||"Kortlek "+(d.length+1),cards});store(d);decks();$("view").innerHTML="Sparad! ✅"};
+}
+function decks(){
+  const d=load();
+  $("decks").innerHTML=d.length?d.map((x,i)=>`<div class="deck"><span>${esc(x.name)} (${x.cards.length})</span><span><button class="g" data-o="${i}">Öppna</button> <button class="g" data-d="${i}">🗑</button></span></div>`).join(""):"Inga sparade än.";
+  $("decks").querySelectorAll("[data-o]").forEach(b=>b.onclick=()=>{cards=load()[b.dataset.o].cards;start();scrollTo(0,0)});
+  $("decks").querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>{const d=load();d.splice(b.dataset.d,1);store(d);decks()});
+}
+let exam=0,wi=0;
+function parse(o){return JSON.parse(o.slice(o.indexOf("["),o.lastIndexOf("]")+1)).filter(c=>c.q&&c.a)}
+function show(m){mode=m;if(m!=5)exam=0;[1,2,3,4,5].forEach(i=>$("t"+i).className=i==m?"on":"");({1:fc,2:quiz,3:save,4:()=>{wi=0;wr()},5:()=>{exam=Date.now()+cards.length*30000;qi=0;score=0;quiz()}})[m]()}
+$("t2").onclick=()=>{qi=0;score=0;show(2)};$("t4").onclick=()=>show(4);$("t5").onclick=()=>show(5);
+setInterval(()=>{if(!exam||!$("tm"))return;const l=exam-Date.now();if(l<=0){qi=cards.length;quiz();return}$("tm").textContent="⏱ "+Math.floor(l/60000)+":"+String(Math.floor(l%60000/1000)).padStart(2,"0")},500);
+function stats(){try{return JSON.parse(localStorage.getItem("st")||"{}")}catch(e){return{}}}
+function xp(n){const s=stats(),t=new Date().toDateString();s.xp=(s.xp||0)+n;if(s.d!==t){const y=new Date(Date.now()-864e5).toDateString();s.streak=s.d===y?(s.streak||0)+1:1;s.d=t}try{localStorage.setItem("st",JSON.stringify(s))}catch(e){}hud()}
+function hud(){const s=stats(),x=s.xp||0,b=[[50,"🌱 Nybörjare"],[200,"📖 Plugghäst"],[500,"🚀 Proffs"],[1000,"👑 Mästare"]].filter(a=>x>=a[0]).pop();$("hud").textContent=`⭐ ${x} XP · 🔥 ${s.streak||0} dagar i rad`+(b?" · "+b[1]:"")}
+function wr(){const v=$("view");if(wi>=cards.length){v.innerHTML="Klart! ✍️";return}const c=cards[wi];
+v.innerHTML=`<div class="mu">Fråga ${wi+1}/${cards.length}</div><h3>${esc(c.q)}</h3><textarea id="ans" style="min-height:80px"></textarea><div class="row"><button id="ck">Rätta</button><button class="g" id="sk">Hoppa över</button></div><div id="ai"></div>`;
+$("sk").onclick=()=>{wi++;wr()};
+$("ck").onclick=async()=>{$("ai").innerHTML='<div class="ai">Rättar…</div>';try{const r=await ask(W+`Rätta elevens svar snällt men ärligt. Facit: ${c.a}\nElevens svar: ${$("ans").value}\nBörja med "Rätt", "Delvis rätt" eller "Inte riktigt", sedan 1–2 meningar feedback.`);$("ai").innerHTML='<div class="ai">'+esc(r)+'</div><div class="row"><button id="nx2">Nästa →</button></div>';if(/^\s*Rätt/.test(r))xp(15);$("nx2").onclick=()=>{wi++;wr()}}catch(e){$("ai").innerHTML='<div class="ai err">Det gick inte.</div>'}}}
+function save(){const code=btoa(unescape(encodeURIComponent(JSON.stringify(cards))));
+$("view").innerHTML=`<div class="row"><input id="nm" placeholder="Namn på kortleken" style="flex:1"><button id="sv">Spara</button></div><p class="mu">Dela med klasskompisar: kopiera koden och skicka den.</p><textarea id="cd" style="min-height:70px" readonly>${code}</textarea><div class="row"><button class="g" id="cp">📋 Kopiera kod</button></div><p class="mu">Fått en kod? Klistra in här:</p><textarea id="imp" style="min-height:70px"></textarea><div class="row"><button class="g" id="im">Importera</button></div>`;
+$("sv").onclick=()=>{const d=load();d.push({name:$("nm").value||"Kortlek "+(d.length+1),cards});store(d);decks();$("sv").textContent="Sparad ✅"};
+$("cp").onclick=()=>{$("cd").select();try{navigator.clipboard.writeText(code)}catch(e){}$("cp").textContent="Kopierad ✅"};
+$("im").onclick=()=>{try{cards=JSON.parse(decodeURIComponent(escape(atob($("imp").value.trim()))));start()}catch(e){$("im").textContent="Ogiltig kod"}}}
+$("pl").onclick=()=>{const d=Math.ceil((new Date($("dt").value)-new Date())/864e5),n=+$("nc").value||cards.length;if(!(d>0)||!n){$("po").textContent="Välj ett datum framåt och antal kort.";return}const nd=Math.max(1,d-1),pd=Math.ceil(n/nd);$("po").textContent=`${d} dagar kvar. Lär dig ${pd} nya kort per dag i ${nd} dagar och repetera allt dagen före provet. Räkna med ca ${Math.ceil(pd*1.5)} min per dag.`};
+$("phb").onclick=()=>$("ph").click();
+$("ph").onchange=async e=>{const f=e.target.files[0];if(!f||!sample)return;let ok=false;try{ok=(await sample.limits()).images}catch(x){}
+if(!ok){$("msg").className="err";$("msg").textContent="Foto stöds inte här.";return}
+$("msg").className="mu";$("msg").textContent="Läser bilden…";
+try{const r=await sample(W+`Läs texten i bilden och skapa ${$("n").value} flashcards på svenska, nivå ${$("lvl").value}. Svara ENDAST med JSON-array [{"q":"fråga","a":"svar"}], inga backticks.`,{images:[f],cache:false});cards=parse(r.text);if(!cards.length)throw 0;start();$("msg").textContent="Klart! "+cards.length+" kort."}catch(x){$("msg").className="err";$("msg").textContent="Kunde inte läsa bilden."}};
+decks();hud();
+</script>
+</body>
+</html>
