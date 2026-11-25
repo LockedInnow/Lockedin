@@ -36,7 +36,7 @@ input{padding:9px;border-radius:10px;border:1px solid var(--bd);background:var(-
 <body>
 <main>
 <h1>📚 PluggAI</h1>
-<p class="sub">Klistra in dina anteckningar eller frågor – AI:n gör dem till flashcards, quiz och minnestricks. [v3]</p>
+<p class="sub">Klistra in dina anteckningar eller frågor – AI:n gör dem till flashcards, quiz och minnestricks. [v4]</p>
 
 <div class="box">
 <div id="hud" class="mu" style="margin-bottom:8px"></div><textarea id="src" placeholder="Klistra in text, glosor eller frågor här…"></textarea>
@@ -61,8 +61,9 @@ const $=id=>document.getElementById(id);
 let cards=[],queue=[],flip=false,mode=1,qi=0,score=0,sample=null;
 const W="Du är en peppig studiecoach för svenska elever. ";
 
-sample=async p=>{const r=await fetch("/.netlify/functions/ai",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({prompt:p})});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(r.status+": "+(j.error||"okänt fel"));return j};
-sample.limits=async()=>({images:false});
+sample=async(p,o)=>{let image;if(o&&o.images&&o.images[0])image=await shrink(o.images[0]);const r=await fetch("/.netlify/functions/ai",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({prompt:p,image})});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(r.status+": "+(j.error||"okänt fel"));return j};
+sample.limits=async()=>({images:true});
+function shrink(f){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>{const s=Math.min(1,1400/Math.max(i.width,i.height)),c=document.createElement("canvas");c.width=Math.round(i.width*s);c.height=Math.round(i.height*s);c.getContext("2d").drawImage(i,0,0,c.width,c.height);res(c.toDataURL("image/jpeg",.8).split(",")[1])};i.onerror=()=>rej(new Error("Kunde inte läsa bilden"));i.src=URL.createObjectURL(f)})}
 
 function load(){try{return JSON.parse(localStorage.getItem("decks")||"[]")}catch(e){return[]}}
 function store(d){try{localStorage.setItem("decks",JSON.stringify(d))}catch(e){}}
