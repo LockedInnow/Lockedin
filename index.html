@@ -36,7 +36,9 @@ input{padding:9px;border-radius:10px;border:1px solid var(--bd);background:var(-
 <body>
 <main>
 <h1>📚 PluggAI</h1>
-<p class="sub">Klistra in dina anteckningar eller frågor – AI:n gör dem till flashcards, quiz och minnestricks. [v4]</p>
+<p class="sub">Klistra in dina anteckningar eller frågor – AI:n gör dem till flashcards, quiz och minnestricks. [v6]</p>
+<div id="auth" class="box" hidden><b>Logga in eller skapa konto</b><div class="row"><input id="em" type="email" placeholder="E-post" autocomplete="email" style="flex:1;min-width:180px"><input id="pw" type="password" placeholder="Lösenord (minst 6 tecken)" autocomplete="current-password" style="flex:1;min-width:180px"></div><div class="row"><button id="li">Logga in</button><button class="g" id="su">Skapa konto</button></div><div id="ae" class="err" style="margin-top:8px"></div><p class="mu">När du skapar konto sparar vi din e-post och dina kortlekar. Är du under 13 år, fråga en vårdnadshavare först.</p></div>
+<div id="app" hidden><div class="row" style="justify-content:space-between;margin:0 0 12px"><span id="who" class="mu"></span><button class="g" id="lo">Logga ut</button></div>
 
 <div class="box">
 <div id="hud" class="mu" style="margin-bottom:8px"></div><textarea id="src" placeholder="Klistra in text, glosor eller frågor här…"></textarea>
@@ -55,13 +57,14 @@ input{padding:9px;border-radius:10px;border:1px solid var(--bd);background:var(-
 
 <div class="box"><b>📅 Studieplan</b><div class="row"><input type="date" id="dt"><input type="number" id="nc" placeholder="Antal kort" style="width:110px"><button id="pl">Räkna ut</button></div><div id="po" class="mu" style="margin-top:8px"></div></div>
 <div class="box"><b>Sparade kortlekar</b><div id="decks" class="mu">Inga sparade än.</div></div>
-</main>
+</div></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 const $=id=>document.getElementById(id);
 let cards=[],queue=[],flip=false,mode=1,qi=0,score=0,sample=null;
 const W="Du är en peppig studiecoach för svenska elever. ";
 
-sample=async(p,o)=>{let image;if(o&&o.images&&o.images[0])image=await shrink(o.images[0]);const r=await fetch("/.netlify/functions/ai",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({prompt:p,image})});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(r.status+": "+(j.error||"okänt fel"));return j};
+sample=async(p,o)=>{let image;if(o&&o.images&&o.images[0])image=await shrink(o.images[0]);const {data:{session}}=await sb.auth.getSession();const r=await fetch("/.netlify/functions/ai",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+(session?session.access_token:"")},body:JSON.stringify({prompt:p,image})});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(r.status+": "+(j.error||"okänt fel"));return j};
 sample.limits=async()=>({images:true});
 function shrink(f){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>{const s=Math.min(1,1400/Math.max(i.width,i.height)),c=document.createElement("canvas");c.width=Math.round(i.width*s);c.height=Math.round(i.height*s);c.getContext("2d").drawImage(i,0,0,c.width,c.height);res(c.toDataURL("image/jpeg",.8).split(",")[1])};i.onerror=()=>rej(new Error("Kunde inte läsa bilden"));i.src=URL.createObjectURL(f)})}
 
@@ -159,8 +162,31 @@ $("phb").onclick=()=>$("ph").click();
 $("ph").onchange=async e=>{const f=e.target.files[0];if(!f||!sample)return;let ok=false;try{ok=(await sample.limits()).images}catch(x){}
 if(!ok){$("msg").className="err";$("msg").textContent="Foto stöds inte här.";return}
 $("msg").className="mu";$("msg").textContent="Läser bilden…";
-try{const r=await sample(W+`Läs texten i bilden och skapa ${$("n").value} flashcards på svenska, nivå ${$("lvl").value}. Svara ENDAST med JSON-array [{"q":"fråga","a":"svar"}], inga backticks.`,{images:[f],cache:false});cards=parse(r.text);if(!cards.length)throw 0;start();$("msg").textContent="Klart! "+cards.length+" kort."}catch(x){$("msg").className="err";$("msg").textContent="Kunde inte läsa bilden."}};
+try{const r=await sample(W+`Läs texten i bilden och skapa ${$("n").value} flashcards på svenska, nivå ${$("lvl").value}. Svara ENDAST med JSON-array [{"q":"fråga","a":"svar"}], inga backticks.`,{images:[f],cache:false});cards=parse(r.text);if(!cards.length)throw new Error("Tomt svar: "+r.text.slice(0,150));start();$("msg").textContent="Klart! "+cards.length+" kort."}catch(x){$("msg").className="err";$("msg").textContent="Kunde inte läsa bilden – "+((x&&x.message)||"okänt fel")}};
 decks();hud();
+var user=null;
+const sb=supabase.createClient("https://pclhlbvuepsseuvsbaxg.supabase.co","sb_publishable_2bVOQdcM0Jeuc5STzR4sbw_q-5ox2ZY");
+const sv=m=>/Invalid login/i.test(m)?"Fel e-post eller lösenord.":/already registered/i.test(m)?"Kontot finns redan – logga in.":/at least 6/i.test(m)?"Lösenordet måste vara minst 6 tecken.":m;
+function gate(u){user=u||null;$("auth").hidden=!!user;$("app").hidden=!user;$("who").textContent=user?user.email:"";decks()}
+sb.auth.getSession().then(({data})=>gate(data.session&&data.session.user));
+sb.auth.onAuthStateChange((_e,ses)=>setTimeout(()=>gate(ses&&ses.user),0));
+$("li").onclick=async()=>{$("ae").textContent="";const {error}=await sb.auth.signInWithPassword({email:$("em").value.trim(),password:$("pw").value});if(error)$("ae").textContent=sv(error.message)};
+$("su").onclick=async()=>{$("ae").textContent="";const {data,error}=await sb.auth.signUp({email:$("em").value.trim(),password:$("pw").value});if(error){$("ae").textContent=sv(error.message);return}if(!data.session)$("ae").textContent="Kolla din mejl och bekräfta kontot, logga sedan in."};
+$("lo").onclick=()=>sb.auth.signOut();
+async function decks(){
+  if(!user){$("decks").textContent="Logga in för att se dina kortlekar.";return}
+  const {data,error}=await sb.from("decks").select("id,name,cards").order("created_at",{ascending:false});
+  if(error){$("decks").textContent="Kunde inte hämta kortlekar.";return}
+  window._d=data;
+  $("decks").innerHTML=data.length?data.map((x,i)=>`<div class="deck"><span>${esc(x.name)} (${x.cards.length})</span><span><button class="g" data-o="${i}">Öppna</button> <button class="g" data-d="${i}">🗑</button></span></div>`).join(""):"Inga sparade än.";
+  $("decks").querySelectorAll("[data-o]").forEach(b=>b.onclick=()=>{cards=window._d[b.dataset.o].cards;start();scrollTo(0,0)});
+  $("decks").querySelectorAll("[data-d]").forEach(b=>b.onclick=async()=>{await sb.from("decks").delete().eq("id",window._d[b.dataset.d].id);decks()});
+}
+function save(){const code=btoa(unescape(encodeURIComponent(JSON.stringify(cards))));
+$("view").innerHTML=`<div class="row"><input id="nm" placeholder="Namn på kortleken" style="flex:1"><button id="sv">Spara i molnet</button></div><p class="mu">Dela med klasskompisar: kopiera koden och skicka den.</p><textarea id="cd" style="min-height:70px" readonly>${code}</textarea><div class="row"><button class="g" id="cp">📋 Kopiera kod</button></div><p class="mu">Fått en kod? Klistra in här:</p><textarea id="imp" style="min-height:70px"></textarea><div class="row"><button class="g" id="im">Importera</button></div>`;
+$("sv").onclick=async()=>{const {error}=await sb.from("decks").insert({name:$("nm").value||"Kortlek",cards});$("sv").textContent=error?"Kunde inte spara":"Sparad ✅";if(!error)decks()};
+$("cp").onclick=()=>{$("cd").select();try{navigator.clipboard.writeText(code)}catch(e){}$("cp").textContent="Kopierad ✅"};
+$("im").onclick=()=>{try{cards=JSON.parse(decodeURIComponent(escape(atob($("imp").value.trim()))));start()}catch(e){$("im").textContent="Ogiltig kod"}}}
 </script>
 </body>
 </html>
