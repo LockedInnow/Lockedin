@@ -36,7 +36,7 @@ input{padding:9px;border-radius:10px;border:1px solid var(--bd);background:var(-
 <body>
 <main>
 <h1>📚 PluggAI</h1>
-<p class="sub">Klistra in dina anteckningar eller frågor – AI:n gör dem till flashcards, quiz och minnestricks. [v6]</p>
+<p class="sub">Klistra in dina anteckningar eller frågor – AI:n gör dem till flashcards, quiz och minnestricks. [v7]</p>
 <div id="auth" class="box" hidden><b>Logga in eller skapa konto</b><div class="row"><input id="em" type="email" placeholder="E-post" autocomplete="email" style="flex:1;min-width:180px"><input id="pw" type="password" placeholder="Lösenord (minst 6 tecken)" autocomplete="current-password" style="flex:1;min-width:180px"></div><div class="row"><button id="li">Logga in</button><button class="g" id="su">Skapa konto</button></div><div id="ae" class="err" style="margin-top:8px"></div><p class="mu">När du skapar konto sparar vi din e-post och dina kortlekar. Är du under 13 år, fråga en vårdnadshavare först.</p></div>
 <div id="app" hidden><div class="row" style="justify-content:space-between;margin:0 0 12px"><span id="who" class="mu"></span><button class="g" id="lo">Logga ut</button></div>
 
@@ -83,8 +83,7 @@ $("go").onclick=async()=>{
   $("go").disabled=true;$("msg").className="mu";$("msg").textContent="Skapar kort…";
   try{
     const out=await ask(W+`Skapa ${$("n").value} flashcards på svenska från texten nedan. Nivå: ${$("lvl").value}. Korta, tydliga frågor och svar. Om texten redan är frågor, svara på dem. Svara ENDAST med en JSON-array [{"q":"fråga","a":"svar"}], inga backticks.\n\nTEXT:\n${t}`);
-    const j=JSON.parse(out.slice(out.indexOf("["),out.lastIndexOf("]")+1));
-    cards=j.filter(c=>c.q&&c.a);
+    cards=parse(out);
     if(!cards.length)throw new Error("Tomt svar: "+out.slice(0,150));
     start();$("msg").textContent="Klart! "+cards.length+" kort.";
   }catch(e){$("msg").className="err";$("msg").textContent="Något gick snett – "+((e&&e.message)||"försök igen")}
@@ -141,7 +140,7 @@ function decks(){
   $("decks").querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>{const d=load();d.splice(b.dataset.d,1);store(d);decks()});
 }
 let exam=0,wi=0;
-function parse(o){return JSON.parse(o.slice(o.indexOf("["),o.lastIndexOf("]")+1)).filter(c=>c.q&&c.a)}
+function parse(o){if(o.indexOf("[")<0)throw new Error("Inget kortsvar: "+o.slice(0,100));let t=o.slice(o.indexOf("["));if(t.lastIndexOf("]")<t.lastIndexOf("}"))t=t.slice(0,t.lastIndexOf("}")+1)+"]";else t=t.slice(0,t.lastIndexOf("]")+1);return JSON.parse(t).filter(c=>c.q&&c.a)}
 function show(m){mode=m;if(m!=5)exam=0;[1,2,3,4,5].forEach(i=>$("t"+i).className=i==m?"on":"");({1:fc,2:quiz,3:save,4:()=>{wi=0;wr()},5:()=>{exam=Date.now()+cards.length*30000;qi=0;score=0;quiz()}})[m]()}
 $("t2").onclick=()=>{qi=0;score=0;show(2)};$("t4").onclick=()=>show(4);$("t5").onclick=()=>show(5);
 setInterval(()=>{if(!exam||!$("tm"))return;const l=exam-Date.now();if(l<=0){qi=cards.length;quiz();return}$("tm").textContent="⏱ "+Math.floor(l/60000)+":"+String(Math.floor(l%60000/1000)).padStart(2,"0")},500);
